@@ -25,6 +25,21 @@ function primaryMetric(cardName: RegExp) {
   return { value: value.textContent ?? "", caption: value.nextElementSibling?.textContent ?? "" };
 }
 
+describe("서비스 이름", () => {
+  it("제목은 '팔기전에'다", () => {
+    render(<Page />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("팔기전에");
+  });
+
+  it("결과 지표 '실수령액'은 서비스명과 무관한 도메인 용어이므로 그대로 쓴다", async () => {
+    await loadScenario("여유 시나리오");
+    const steps = screen.getByText("세금 계산 과정").parentElement!;
+    expect(within(steps).getByText("실수령액")).toBeDefined();
+    // 서비스명을 일괄 치환하면 깨지는 문자열이 생긴다.
+    expect(document.body.textContent).not.toMatch(/팔기전에액/);
+  });
+});
+
 describe("페이지", () => {
   it("처음에는 결과 대신 안내를 보여준다", () => {
     render(<Page />);

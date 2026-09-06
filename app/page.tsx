@@ -119,7 +119,7 @@ export default function Page() {
       <header className="border-b border-gray-200">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-5 sm:px-6">
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-gray-900">실수령</h1>
+            <h1 className="text-xl font-bold tracking-tight text-gray-900">팔기전에</h1>
             <p className="hint mt-0.5">
               필요한 현금을 마련하면서 해외주식 양도소득세를 가장 적게 내는 매도 조합
             </p>
