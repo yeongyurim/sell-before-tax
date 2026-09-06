@@ -354,3 +354,13 @@ export function optimize(input: OptimizeInput): OptimizeResult {
     savings: plans.length > 0 ? baseline.tax - plans[0].tax : 0,
   };
 }
+
+/**
+ * 모든 조합의 세금이 같은지 판정한다.
+ * 손실 종목으로 상계할 여유가 충분하면 세 조합이 전부 같은 세금(대개 0원)으로 수렴하는데,
+ * 이때는 세금 대신 포트폴리오 유지율이 실질적인 선택 기준이 된다.
+ */
+export function hasUniformTax(plans: SellPlan[]): boolean {
+  if (plans.length < 2) return false;
+  return plans.every((plan) => plan.tax === plans[0].tax);
+}

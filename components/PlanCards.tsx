@@ -7,6 +7,8 @@ interface PlanCardsProps {
   plans: SellPlan[];
   selectedIndex: number;
   onSelect: (index: number) => void;
+  /** 조합별 세금이 모두 같을 때 참. 주 지표를 포트폴리오 유지율로 바꾼다. */
+  emphasizeRetention?: boolean;
 }
 
 const DESCRIPTIONS: Record<string, string> = {
@@ -15,7 +17,12 @@ const DESCRIPTIONS: Record<string, string> = {
   "비중 유지": "기존 비중을 최대한 그대로 유지",
 };
 
-export default function PlanCards({ plans, selectedIndex, onSelect }: PlanCardsProps) {
+export default function PlanCards({
+  plans,
+  selectedIndex,
+  onSelect,
+  emphasizeRetention = false,
+}: PlanCardsProps) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {plans.map((plan, index) => {
@@ -49,11 +56,23 @@ export default function PlanCards({ plans, selectedIndex, onSelect }: PlanCardsP
             <p className="hint mt-0.5">{DESCRIPTIONS[plan.label] ?? ""}</p>
 
             <p className="tnum mt-4 text-2xl font-bold tracking-tight text-gray-900">
-              {formatKRW(plan.tax)}
+              {emphasizeRetention
+                ? formatPercent(1 - plan.portfolioDrift)
+                : formatKRW(plan.tax)}
             </p>
-            <p className="hint">예상 세금</p>
+            <p className="hint">{emphasizeRetention ? "포트폴리오 유지율" : "예상 세금"}</p>
 
             <dl className="mt-4 space-y-1.5 border-t border-gray-100 pt-3 text-xs">
+              <div className="flex justify-between">
+                <dt className="text-gray-500">
+                  {emphasizeRetention ? "예상 세금" : "포트폴리오 유지율"}
+                </dt>
+                <dd className="tnum text-gray-700">
+                  {emphasizeRetention
+                    ? formatKRW(plan.tax)
+                    : formatPercent(1 - plan.portfolioDrift)}
+                </dd>
+              </div>
               <div className="flex justify-between">
                 <dt className="text-gray-500">실수령액</dt>
                 <dd className="tnum font-medium text-gray-900">{formatKRW(plan.netCash)}</dd>
@@ -61,12 +80,6 @@ export default function PlanCards({ plans, selectedIndex, onSelect }: PlanCardsP
               <div className="flex justify-between">
                 <dt className="text-gray-500">매도 종목 수</dt>
                 <dd className="tnum text-gray-700">{plan.lots.length}개</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-gray-500">포트폴리오 유지율</dt>
-                <dd className="tnum text-gray-700">
-                  {formatPercent(1 - plan.portfolioDrift)}
-                </dd>
               </div>
             </dl>
           </button>

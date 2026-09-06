@@ -8,10 +8,10 @@ import InputPanel from "@/components/InputPanel";
 import PlanCards from "@/components/PlanCards";
 import ResultSummary from "@/components/ResultSummary";
 import TaxBreakdown from "@/components/TaxBreakdown";
-import { formatKRW } from "@/lib/format";
-import { optimize } from "@/lib/optimizer";
-import { DEFAULT_FX, buildSampleScenario } from "@/lib/sampleData";
-import type { Holding, OptimizeInput, OptimizeResult } from "@/lib/types";
+import { formatKRW, formatPercent } from "@/lib/format";
+import { hasUniformTax, optimize } from "@/lib/optimizer";
+import { DEFAULT_FX, SAMPLE_SCENARIOS, buildSampleScenario } from "@/lib/sampleData";
+import type { Holding, OptimizeInput, OptimizeResult, SellPlan } from "@/lib/types";
 
 /** 입력이 멎은 뒤에만 최적화를 돌려 타이핑이 끊기지 않게 한다. */
 function useDebounced<T>(value: T, delay: number): T {
@@ -21,6 +21,24 @@ function useDebounced<T>(value: T, delay: number): T {
     return () => clearTimeout(timer);
   }, [value, delay]);
   return debounced;
+}
+
+/**
+ * 조합별 세금이 모두 같을 때 보여줄 안내.
+ * 이 경우 세금은 더 이상 선택 기준이 못 되므로 무엇을 보고 고를지 알려준다.
+ */
+function uniformTaxNotice(plans: SellPlan[]): string {
+  const countWord = plans.length === 2 ? "두" : "세";
+  if (plans[0].tax === 0) {
+    return `${countWord} 조합 모두 세금 0원입니다. 손실 종목으로 상계할 여유가 충분한 상태이므로, 이제 포트폴리오를 얼마나 지킬지로 고르시면 됩니다.`;
+  }
+  return `${countWord} 조합 모두 세금이 ${formatKRW(plans[0].tax)}으로 같습니다. 이제 포트폴리오를 얼마나 지킬지로 고르시면 됩니다.`;
+}
+
+/** 조합들의 유지율 범위 (drift 기준: worst = 가장 많이 벗어난 쪽) */
+function retentionRange(plans: SellPlan[]): { worst: number; best: number } {
+  const drifts = plans.map((plan) => plan.portfolioDrift);
+  return { worst: Math.max(...drifts), best: Math.min(...drifts) };
 }
 
 const emptyRow = (): Holding => ({
@@ -73,11 +91,13 @@ export default function Page() {
   }, [result, selectedIndex]);
 
   const selectedPlan = result?.plans[selectedIndex] ?? result?.plans[0] ?? null;
+  // 세금이 전부 같으면 세금은 선택 기준이 못 된다. 주 지표를 유지율로 바꾼다.
+  const uniformTax = result != null && hasUniformTax(result.plans);
   const usesSingleFx = validHoldings.every((h) => h.fxBuy === undefined);
   const infeasible = result != null && !result.plans.some((p) => p.meetsTarget);
 
-  const loadSample = () => {
-    const sample = buildSampleScenario();
+  const loadSample = (id: string) => {
+    const sample = buildSampleScenario(id);
     setHoldings(sample.holdings);
     setPriorRealizedGain(sample.priorRealizedGain);
     setTargetCash(sample.targetCash);
@@ -104,13 +124,22 @@ export default function Page() {
               필요한 현금을 마련하면서 해외주식 양도소득세를 가장 적게 내는 매도 조합
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="btn-ghost" onClick={reset}>
               초기화
             </button>
-            <button type="button" className="btn-primary" onClick={loadSample}>
-              예시 데이터 채우기
-            </button>
+            <span className="hint hidden sm:inline">예시</span>
+            {SAMPLE_SCENARIOS.map((scenario, index) => (
+              <button
+                key={scenario.id}
+                type="button"
+                title={scenario.description}
+                className={index === 0 ? "btn-primary" : "btn-ghost"}
+                onClick={() => loadSample(scenario.id)}
+              >
+                {scenario.label}
+              </button>
+            ))}
           </div>
         </div>
       </header>
@@ -172,9 +201,26 @@ export default function Page() {
               <p className="text-sm text-gray-500">
                 보유 종목과 필요 금액을 입력하면 매도 조합을 계산합니다.
               </p>
-              <button type="button" className="btn-primary mt-4" onClick={loadSample}>
-                예시 데이터로 먼저 보기
-              </button>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                {SAMPLE_SCENARIOS.map((scenario, index) => (
+                  <button
+                    key={scenario.id}
+                    type="button"
+                    className={index === 0 ? "btn-primary" : "btn-ghost"}
+                    onClick={() => loadSample(scenario.id)}
+                  >
+                    {scenario.label}로 먼저 보기
+                  </button>
+                ))}
+              </div>
+              <dl className="mx-auto mt-5 max-w-md space-y-1.5 text-left">
+                {SAMPLE_SCENARIOS.map((scenario) => (
+                  <div key={scenario.id} className="hint">
+                    <dt className="inline font-medium text-gray-600">{scenario.label}</dt>
+                    <dd className="inline"> — {scenario.description.split(" — ")[1]}</dd>
+                  </div>
+                ))}
+              </dl>
             </div>
           ) : (
             <div className="space-y-5">
@@ -192,10 +238,25 @@ export default function Page() {
                 />
               )}
 
+              {uniformTax && !infeasible ? (
+                <div className="rounded-lg border border-accent-200 bg-accent-50 px-4 py-3">
+                  <p className="text-sm leading-relaxed text-accent-900">
+                    {uniformTaxNotice(result.plans)}
+                  </p>
+                  <p className="tnum mt-1.5 text-xs text-accent-700">
+                    단순 매도 유지율 {formatPercent(1 - result.baseline.portfolioDrift)}
+                    <span className="mx-1.5 text-accent-500">→</span>
+                    조합 {formatPercent(1 - retentionRange(result.plans).worst)} ~{" "}
+                    {formatPercent(1 - retentionRange(result.plans).best)}
+                  </p>
+                </div>
+              ) : null}
+
               <PlanCards
                 plans={result.plans}
                 selectedIndex={Math.min(selectedIndex, result.plans.length - 1)}
                 onSelect={setSelectedIndex}
+                emphasizeRetention={uniformTax && !infeasible}
               />
 
               <div className="rounded-xl border border-gray-200 px-5 py-5">

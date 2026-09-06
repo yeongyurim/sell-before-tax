@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { buildBaseline } from "./baseline";
-import { optimize, optimizeWithWeight } from "./optimizer";
+import { hasUniformTax, optimize, optimizeWithWeight } from "./optimizer";
 import {
   DEFAULT_FX,
   SAMPLE_PRIOR_REALIZED_GAIN,
+  SAMPLE_SCENARIOS,
   SAMPLE_TARGET_CASH,
+  buildSampleScenario,
   sampleHoldings,
 } from "./sampleData";
 import type { Holding, OptimizeInput, SellPlan } from "./types";
@@ -192,5 +194,78 @@ describe("성능", () => {
     const result = optimize(makeInput({ holdings, targetCash: 80_000_000 }));
     expect(Date.now() - started).toBeLessThan(2000);
     expect(result.plans[0].meetsTarget).toBe(true);
+  });
+});
+
+describe("예시 시나리오", () => {
+  const run = (id: string) => {
+    const scenario = buildSampleScenario(id);
+    return optimize({
+      holdings: scenario.holdings,
+      priorRealizedGain: scenario.priorRealizedGain,
+      targetCash: scenario.targetCash,
+      fxSell: scenario.fxSell,
+      portfolioWeight: 0.5,
+    });
+  };
+
+  it("두 시나리오는 같은 보유 종목에 목표 금액만 다르다", () => {
+    const [relaxed, tight] = SAMPLE_SCENARIOS;
+    expect(SAMPLE_SCENARIOS).toHaveLength(2);
+    expect(tight.targetCash).toBeGreaterThan(relaxed.targetCash);
+    expect(relaxed.holdings.map((h) => h.ticker)).toEqual(tight.holdings.map((h) => h.ticker));
+    // 기획서 수치가 나오는 데이터라 손대지 않는다.
+    expect(relaxed.targetCash).toBe(SAMPLE_TARGET_CASH);
+    expect(relaxed.priorRealizedGain).toBe(SAMPLE_PRIOR_REALIZED_GAIN);
+  });
+
+  it("여유 시나리오는 세 조합의 세금이 모두 0원으로 같다", () => {
+    const result = run("relaxed");
+    expect(hasUniformTax(result.plans)).toBe(true);
+    for (const plan of result.plans) expect(plan.tax).toBe(0);
+    // 기획서에 실린 절감액
+    expect(result.savings).toBe(4_770_392);
+  });
+
+  it("빡빡한 시나리오는 조합마다 세금이 갈려 트레이드오프가 드러난다", () => {
+    const result = run("tight");
+    expect(hasUniformTax(result.plans)).toBe(false);
+    expect(result.plans.length).toBeGreaterThanOrEqual(2);
+
+    // 세금이 오르는 만큼 포트폴리오는 더 지켜진다.
+    const taxMin = result.plans[0];
+    const keepWeights = result.plans[result.plans.length - 1];
+    expect(keepWeights.tax).toBeGreaterThan(taxMin.tax);
+    expect(keepWeights.portfolioDrift).toBeLessThan(taxMin.portfolioDrift);
+    expect(result.savings).toBeGreaterThan(0);
+  });
+});
+
+describe("hasUniformTax", () => {
+  const plan = (tax: number): SellPlan => ({
+    label: "테스트",
+    lots: [],
+    grossProceeds: 0,
+    realizedGain: 0,
+    totalRealized: 0,
+    taxableBase: 0,
+    tax,
+    netCash: 0,
+    portfolioDrift: 0,
+    meetsTarget: true,
+  });
+
+  it("세금이 모두 같으면 참이다", () => {
+    expect(hasUniformTax([plan(0), plan(0), plan(0)])).toBe(true);
+    expect(hasUniformTax([plan(500), plan(500)])).toBe(true);
+  });
+
+  it("하나라도 다르면 거짓이다", () => {
+    expect(hasUniformTax([plan(0), plan(0), plan(1)])).toBe(false);
+  });
+
+  it("조합이 하나뿐이면 비교할 대상이 없으므로 거짓이다", () => {
+    expect(hasUniformTax([plan(0)])).toBe(false);
+    expect(hasUniformTax([])).toBe(false);
   });
 });

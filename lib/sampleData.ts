@@ -16,12 +16,42 @@ export const sampleHoldings: Holding[] = [
   { id: "s8", ticker: "SCHD", name: "슈드 ETF", quantity: 300, avgBuyPrice: 27.5, currentPrice: 29.1, locked: false },
 ];
 
-/** 예시 데이터 버튼이 채워 넣는 전체 시나리오 */
-export function buildSampleScenario() {
-  return {
-    holdings: sampleHoldings.map((h) => ({ ...h, id: `sample-${h.ticker}` })),
+/** 예시 데이터 버튼 하나가 채워 넣는 전체 시나리오 */
+export interface SampleScenario {
+  id: string;
+  label: string;
+  /** 버튼 툴팁 및 빈 화면 안내에 쓰는 한 줄 설명 */
+  description: string;
+  holdings: Holding[];
+  priorRealizedGain: number;
+  targetCash: number;
+  fxSell: number;
+}
+
+/**
+ * 두 시나리오는 같은 보유 종목에 목표 금액만 다르다.
+ * 필요 금액이 커질수록 손실 종목만으로는 상계할 수 없어 세금과 비중 유지가 서로 부딪힌다.
+ */
+export const SAMPLE_SCENARIOS: SampleScenario[] = [
+  {
+    id: "relaxed",
+    label: "여유 시나리오",
+    description: "필요 금액 5,000만원 — 손실 종목으로 상계할 여유가 충분해 세 조합 모두 세금이 없습니다.",
+    holdings: sampleHoldings.map((h) => ({ ...h, id: `relaxed-${h.ticker}` })),
     priorRealizedGain: SAMPLE_PRIOR_REALIZED_GAIN,
     targetCash: SAMPLE_TARGET_CASH,
     fxSell: DEFAULT_FX,
-  };
-}
+  },
+  {
+    id: "tight",
+    label: "빡빡한 시나리오",
+    description: "필요 금액 1억 2,000만원 — 상계 여유가 모자라 세금과 비중 유지가 맞바뀝니다.",
+    holdings: sampleHoldings.map((h) => ({ ...h, id: `tight-${h.ticker}` })),
+    priorRealizedGain: SAMPLE_PRIOR_REALIZED_GAIN,
+    targetCash: 120_000_000,
+    fxSell: DEFAULT_FX,
+  },
+];
+
+export const buildSampleScenario = (id: string = "relaxed"): SampleScenario =>
+  SAMPLE_SCENARIOS.find((s) => s.id === id) ?? SAMPLE_SCENARIOS[0];
